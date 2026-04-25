@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Snake II</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden; background: #0f0f0f;
+      overscroll-behavior: none;
+    }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      touch-action: none; user-select: none; -webkit-user-select: none;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* The Nokia-style green console bezel */
+    #console {
+      flex-shrink: 0;
+      padding: 14px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #4a5a10, #3a4a08);
+      box-shadow:
+        0 6px 28px rgba(0, 0, 0, 0.7),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border-radius: 4px;
+    }
+
+    /* On-screen d-pad: only on touch devices */
+    #controls {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      display: flex; justify-content: center;
+      padding: 8px 0 max(14px, env(safe-area-inset-bottom));
+      pointer-events: none;
+      z-index: 10;
+    }
+    @media (pointer: fine) {
+      #controls { display: none; }
+    }
+    @media (orientation: landscape) and (pointer: coarse) {
+      #controls {
+        right: 14px; left: auto; bottom: auto;
+        top: 50%; transform: translateY(-50%);
+        padding: 0;
+      }
+    }
+    .dpad {
+      display: grid;
+      grid-template-areas:
+        ".  up  ."
+        "lt  .  rt"
+        ".  dn  .";
+      grid-template-columns: 68px 68px 68px;
+      grid-template-rows: 58px 58px 58px;
+      gap: 4px;
+      pointer-events: auto;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
+    }
+    .dpad button {
+      border: 2px solid rgba(180, 200, 60, 0.4);
+      border-radius: 50%;
+      background: rgba(120, 140, 30, 0.55);
+      color: rgba(20, 25, 0, 0.9);
+      font: bold 24px sans-serif;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 60ms, background 60ms;
+    }
+    .dpad button:active {
+      background: rgba(180, 200, 60, 0.85);
+      transform: scale(0.92);
+    }
+
+    #high-score-dialog {
+      position: fixed; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+    }
+    #high-score-dialog .box {
+      width: 280px; padding: 24px;
+      text-align: center;
+      background: #1a1a1a;
+      border: 2px solid #7a8a20;
+      border-radius: 12px;
+    }
+    #high-score-dialog h2 {
+      color: #9aaa30; font-size: 16px;
+      letter-spacing: 2px; margin-bottom: 6px;
+    }
+    #high-score-dialog p {
+      color: #888; font-size: 12px; margin-bottom: 12px;
+    }
+    #high-score-dialog input {
+      width: 100%; padding: 10px;
+      background: #2a2a2a; border: 1px solid #555;
+      border-radius: 5px; color: #fff;
+      font: bold 17px 'Courier New', monospace;
+      text-align: center; text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+    #high-score-dialog input:focus {
+      outline: none;
+      border-color: #9aaa30;
+      box-shadow: 0 0 8px rgba(120, 140, 30, 0.3);
+    }
+    #high-score-dialog button {
+      margin-top: 10px; padding: 10px 28px;
+      background: #7a8a20; border: none; border-radius: 5px;
+      color: #111; font: bold 14px 'Courier New', monospace;
+      letter-spacing: 1px; cursor: pointer;
+    }
+    #high-score-dialog button:hover { background: #9aaa30; }
+    #high-score-dialog button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #toast {
+      position: fixed; top: 32%; left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 5px 16px;
+      background: rgba(154, 170, 48, 0.95);
+      border-radius: 5px;
+      color: #111;
+      font: bold 13px 'Courier New', monospace;
+      letter-spacing: 1px; white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      opacity: 0; transition: opacity 0.2s;
+      pointer-events: none; z-index: 50;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="console">
+    <canvas id="game"></canvas>
+  </div>
+
+  <div id="controls">
+    <div class="dpad">
+      <button style="grid-area: up" data-direction="0" aria-label="Up">&#9650;</button>
+      <button style="grid-area: lt" data-direction="1" aria-label="Left">&#9664;</button>
+      <button style="grid-area: rt" data-direction="2" aria-label="Right">&#9654;</button>
+      <button style="grid-area: dn" data-direction="3" aria-label="Down">&#9660;</button>
+    </div>
+  </div>
+
+  <div id="high-score-dialog">
+    <div class="box">
+      <h2>NEW HIGH SCORE!</h2>
+      <p id="high-score-text"></p>
+      <input id="name-input" maxlength="10" placeholder="YOUR NAME"
+             autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <br>
+      <button id="save-button">SAVE</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   SNAKE II
+   Nokia-inspired Snake clone with smooth tick interpolation.
+
+   Code organisation:
+     1. Configuration  — game tuning constants
+     2. Food sprites   — 99 hand-drawn 5x5 pixel foods
+     3. Audio          — synthesised retro sound effects
+     4. Vibration      — mobile haptic feedback
+     5. Leaderboard    — server + local storage
+     6. Canvas         — drawing primitives & pixel font
+     7. Game state     — snake, food, score, etc.
+     8. Effects        — particles, screen shake, etc.
+     9. Game logic     — tick (one move), die, win
+    10. Render         — interpolated drawing every frame
+    11. Main loop      — ticks at game speed, renders every frame
+    12. Input          — keyboard, touch d-pad, swipe
+    13. Init           — wire everything up
+   ════════════════════════════════════════════════════════════════ */
+
+(function() {
+  'use strict';
+
+  /* ── 1. CONFIGURATION ─────────────────────────────────────── */
+
+  // Grid dimensions (in cells)
+  const COLS = 30;
+  const ROWS = 17;
+
+  // Pixel sizes (canvas units)
+  const CELL_SIZE     = 12;
+  const BORDER        = 1;
+  const STATUS_HEIGHT = 13;
+  const FONT_SCALE    = 2;
+
+  // Snake speed (milliseconds per move)
+  const STARTING_SPEED   = 145;
+  const FASTEST_SPEED    = 65;
+  const BOOST_MULTIPLIER = 2.2;
+  const BOOST_HOLD_DELAY = 180;   // ms before boost engages
+
+  // Forgiveness
+  const STARTING_GRACE_MS  = 300; // can't die in first 300ms
+  const SAFE_FOOD_DISTANCE = 2;   // food won't spawn directly in path
+  const INPUT_QUEUE_MAX    = 3;
+  const EARLY_TURN_WINDOW  = 0.85; // can apply queued turn if <85% into tick
+  const DEATH_INPUT_LOCKOUT_MS = 500; // ignore restart inputs after dying
+
+  // Leaderboard API
+  const API_URL    = 'scores.php';
+  const APP_SECRET = 'CHANGE_ME_IN_CONFIG'; // must match config.php
+
+
+  /* ── 2. FOOD SPRITES ──────────────────────────────────────── */
+  // Each food is a 5x5 sprite. Each row is encoded as a 5-bit number.
+  // Bit 0x10 is the leftmost pixel.
+  const FOODS = [
+    { name: 'Apple',      sprite: [0x04,0x0E,0x1F,0x1F,0x0E] },
+    { name: 'Banana',     sprite: [0x02,0x04,0x0C,0x18,0x10] },
+    { name: 'Cherry',     sprite: [0x0A,0x04,0x0A,0x0E,0x00] },
+    { name: 'Grape',      sprite: [0x0A,0x1F,0x0E,0x0E,0x04] },
+    { name: 'Orange',     sprite: [0x0E,0x1B,0x1F,0x1B,0x0E] },
+    { name: 'Pear',       sprite: [0x04,0x0C,0x0E,0x1F,0x0E] },
+    { name: 'Melon',      sprite: [0x0E,0x1F,0x15,0x1F,0x00] },
+    { name: 'Strawberry', sprite: [0x0E,0x1F,0x15,0x0A,0x04] },
+    { name: 'Lemon',      sprite: [0x00,0x0E,0x1F,0x0E,0x00] },
+    { name: 'Kiwi',       sprite: [0x0E,0x15,0x1B,0x15,0x0E] },
+    { name: 'Mango',      sprite: [0x01,0x0F,0x1F,0x1F,0x0E] },
+    { name: 'Peach',      sprite: [0x04,0x0E,0x1F,0x1F,0x0A] },
+    { name: 'Plum',       sprite: [0x04,0x0E,0x0E,0x0E,0x04] },
+    { name: 'Coconut',    sprite: [0x0E,0x11,0x15,0x11,0x0E] },
+    { name: 'Pineapple',  sprite: [0x0A,0x04,0x0E,0x15,0x0E] },
+    { name: 'Blueberry',  sprite: [0x00,0x0E,0x1B,0x0E,0x00] },
+    { name: 'Raspberry',  sprite: [0x0A,0x15,0x0A,0x15,0x0A] },
+    { name: 'Fig',        sprite: [0x04,0x0C,0x0E,0x0E,0x04] },
+    { name: 'Avocado',    sprite: [0x04,0x0E,0x1B,0x1F,0x0E] },
+    { name: 'Tomato',     sprite: [0x0A,0x1F,0x1F,0x1F,0x0E] },
+    { name: 'Carrot',     sprite: [0x14,0x04,0x04,0x0E,0x04] },
+    { name: 'Corn',       sprite: [0x0E,0x15,0x1F,0x15,0x0E] },
+    { name: 'Broccoli',   sprite: [0x0A,0x1F,0x0E,0x04,0x04] },
+    { name: 'Mushroom',   sprite: [0x0E,0x1F,0x04,0x0E,0x04] },
+    { name: 'Pepper',     sprite: [0x04,0x0C,0x1C,0x0C,0x04] },
+    { name: 'Onion',      sprite: [0x04,0x0E,0x1F,0x0E,0x0A] },
+    { name: 'Potato',     sprite: [0x00,0x0F,0x1F,0x1E,0x00] },
+    { name: 'Eggplant',   sprite: [0x04,0x0C,0x0C,0x0E,0x06] },
+    { name: 'Garlic',     sprite: [0x04,0x0A,0x11,0x0E,0x04] },
+    { name: 'Peas',       sprite: [0x00,0x0A,0x15,0x0A,0x00] },
+    { name: 'Pizza',      sprite: [0x04,0x04,0x0E,0x0E,0x1F] },
+    { name: 'Burger',     sprite: [0x1F,0x00,0x1F,0x00,0x1F] },
+    { name: 'Hot Dog',    sprite: [0x06,0x0F,0x1F,0x1E,0x0C] },
+    { name: 'Donut',      sprite: [0x0E,0x1B,0x11,0x1B,0x0E] },
+    { name: 'Fries',      sprite: [0x15,0x15,0x15,0x1F,0x1F] },
+    { name: 'Taco',       sprite: [0x00,0x0E,0x1F,0x1B,0x11] },
+    { name: 'Pretzel',    sprite: [0x0A,0x15,0x0E,0x15,0x0A] },
+    { name: 'Cookie',     sprite: [0x0E,0x1B,0x17,0x1D,0x0E] },
+    { name: 'Cake',       sprite: [0x0A,0x1F,0x15,0x1F,0x1F] },
+    { name: 'Ice Cream',  sprite: [0x0E,0x15,0x0E,0x04,0x04] },
+    { name: 'Candy',      sprite: [0x10,0x0E,0x1F,0x0E,0x01] },
+    { name: 'Popcorn',    sprite: [0x0A,0x15,0x1F,0x1F,0x0E] },
+    { name: 'Waffle',     sprite: [0x1F,0x15,0x1F,0x15,0x1F] },
+    { name: 'Pancake',    sprite: [0x00,0x1F,0x00,0x1F,0x0E] },
+    { name: 'Croissant',  sprite: [0x00,0x0C,0x1E,0x0C,0x00] },
+    { name: 'Coffee',     sprite: [0x1E,0x13,0x12,0x12,0x1E] },
+    { name: 'Beer',       sprite: [0x0A,0x0E,0x0A,0x0E,0x0E] },
+    { name: 'Juice',      sprite: [0x08,0x0E,0x15,0x0E,0x0E] },
+    { name: 'Milk',       sprite: [0x04,0x0E,0x04,0x0E,0x0E] },
+    { name: 'Wine',       sprite: [0x0E,0x0E,0x04,0x04,0x0E] },
+    { name: 'Soda',       sprite: [0x0E,0x0A,0x0E,0x0E,0x0E] },
+    { name: 'Tea',        sprite: [0x10,0x0E,0x0A,0x0E,0x00] },
+    { name: 'Water',      sprite: [0x04,0x04,0x0E,0x1F,0x0E] },
+    { name: 'Steak',      sprite: [0x0F,0x1F,0x1F,0x1E,0x0C] },
+    { name: 'Drumstick',  sprite: [0x0E,0x0E,0x06,0x04,0x08] },
+    { name: 'Fish',       sprite: [0x08,0x1E,0x1F,0x1E,0x08] },
+    { name: 'Shrimp',     sprite: [0x0E,0x10,0x0C,0x06,0x0C] },
+    { name: 'Egg',        sprite: [0x00,0x0E,0x15,0x1F,0x0E] },
+    { name: 'Bacon',      sprite: [0x18,0x06,0x0C,0x06,0x03] },
+    { name: 'Sushi',      sprite: [0x0E,0x1F,0x15,0x1F,0x0E] },
+    { name: 'Cheese',     sprite: [0x01,0x03,0x07,0x0F,0x1F] },
+    { name: 'Cupcake',    sprite: [0x04,0x0A,0x1F,0x0E,0x0E] },
+    { name: 'Pie',        sprite: [0x04,0x1F,0x15,0x1F,0x0E] },
+    { name: 'Chocolate',  sprite: [0x1F,0x1B,0x1F,0x1B,0x1F] },
+    { name: 'Lollipop',   sprite: [0x0E,0x1B,0x0E,0x04,0x04] },
+    { name: 'Gummy Bear', sprite: [0x0A,0x0E,0x1F,0x0E,0x0A] },
+    { name: 'Popsicle',   sprite: [0x0E,0x1F,0x1F,0x0E,0x04] },
+    { name: 'Macaron',    sprite: [0x0E,0x00,0x1F,0x00,0x0E] },
+    { name: 'Brownie',    sprite: [0x00,0x1F,0x15,0x1F,0x00] },
+    { name: 'Star!',      sprite: [0x04,0x0E,0x1F,0x0A,0x11] },
+    { name: 'Heart!',     sprite: [0x0A,0x1F,0x1F,0x0E,0x04] },
+    { name: 'Diamond!',   sprite: [0x04,0x0E,0x1F,0x0E,0x04] },
+    { name: 'Crown!',     sprite: [0x15,0x1F,0x1F,0x1F,0x00] },
+    { name: 'Skull!',     sprite: [0x0E,0x15,0x1F,0x0E,0x0A] },
+    { name: 'Ghost!',     sprite: [0x0E,0x1F,0x15,0x1F,0x15] },
+    { name: 'Rocket!',    sprite: [0x04,0x0E,0x0E,0x1F,0x15] },
+    { name: 'Bomb!',      sprite: [0x02,0x0E,0x1F,0x1F,0x0E] },
+    { name: 'Lightning',  sprite: [0x0C,0x0C,0x1F,0x06,0x06] },
+    { name: 'Snowflake',  sprite: [0x15,0x0E,0x1B,0x0E,0x15] },
+    { name: 'Sunshine',   sprite: [0x04,0x15,0x0E,0x15,0x04] },
+    { name: 'Moon',       sprite: [0x0E,0x18,0x10,0x18,0x0E] },
+    { name: 'Clover',     sprite: [0x04,0x0A,0x15,0x0A,0x04] },
+    { name: 'Bone',       sprite: [0x15,0x0E,0x04,0x0E,0x15] },
+    { name: 'Key',        sprite: [0x0C,0x0C,0x04,0x06,0x04] },
+    { name: 'Gold Coin',  sprite: [0x0E,0x13,0x15,0x19,0x0E] },
+    { name: 'Trophy!',    sprite: [0x15,0x0E,0x0E,0x04,0x0E] },
+    { name: 'Medal',      sprite: [0x11,0x0A,0x0E,0x1F,0x0E] },
+    { name: 'Dice',       sprite: [0x1F,0x13,0x15,0x19,0x1F] },
+    { name: 'Music',      sprite: [0x06,0x04,0x04,0x0C,0x0C] },
+    { name: 'Phone',      sprite: [0x0E,0x0E,0x0E,0x0E,0x0A] },
+    { name: 'Laptop',     sprite: [0x00,0x0E,0x0A,0x0E,0x1F] },
+    { name: 'Shoe',       sprite: [0x00,0x00,0x10,0x18,0x1F] },
+    { name: 'Top Hat',    sprite: [0x04,0x1F,0x0E,0x0E,0x0E] },
+    { name: 'Glasses',    sprite: [0x00,0x00,0x1B,0x15,0x1B] },
+    { name: 'Ring',       sprite: [0x00,0x0E,0x11,0x0E,0x00] },
+    { name: 'Watch',      sprite: [0x0E,0x19,0x15,0x13,0x0E] },
+    { name: 'Shirt',      sprite: [0x11,0x1F,0x0E,0x0E,0x0E] },
+    { name: 'Sock',       sprite: [0x0E,0x04,0x04,0x06,0x0E] },
+    { name: 'Butterfly',  sprite: [0x15,0x1F,0x04,0x1F,0x15] }
+  ];
+
+
+  /* ── 3. AUDIO ─────────────────────────────────────────────── */
+  // Synthesises retro sound effects with Web Audio. The audio context
+  // is created on first user gesture (browsers require this) and reused
+  // for the entire session.
+  //
+  // SOUND GLITCH FIX: Modern browsers create the AudioContext in 'suspended'
+  // state. Calling resume() returns a Promise — until it resolves, any
+  // sounds we try to play are silently dropped. We track a `audioReady`
+  // flag and queue the very first sound until the context is actually
+  // running.
+
+  let audioContext = null;
+  const soundBuffers = {};
+  const lastPlayedAt = {};
+  let audioReady = false;
+  let pendingFirstSound = null;
+
+  function setupAudio() {
+    if (audioContext && audioContext.state !== 'closed') {
+      // Already created. If it suspended (e.g. on tab focus loss), resume it.
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => { audioReady = true; flushPendingSound(); });
+      } else {
+        audioReady = true;
+      }
+      return;
+    }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AC();
+    } catch (e) {
+      audioContext = null;
+      return;
+    }
+    // Build all sound buffers (synchronous; uses audioContext.sampleRate)
+    soundBuffers.eat    = makeBuffer([{f:800,d:35,v:0.10,o:0},{f:1050,d:45,v:0.08,o:40}]);
+    soundBuffers.die    = makeBuffer([{f:400,d:70,v:0.10,o:0},{f:280,d:70,v:0.08,o:80},
+                                      {f:180,d:100,v:0.06,o:170},{f:90,d:150,v:0.05,o:280}]);
+    soundBuffers.start  = makeBuffer([{f:550,d:40,v:0.07,o:0},{f:740,d:40,v:0.07,o:50},
+                                      {f:990,d:55,v:0.08,o:100}]);
+    soundBuffers.turn   = makeBuffer([{f:700,d:10,v:0.05,o:0}]);
+    soundBuffers.boost  = makeBuffer([{f:400,d:20,v:0.04,o:0},{f:650,d:20,v:0.04,o:10},
+                                      {f:900,d:25,v:0.03,o:20}]);
+    soundBuffers.pause  = makeBuffer([{f:500,d:25,v:0.04,o:0},{f:350,d:35,v:0.03,o:30}]);
+    soundBuffers.resume = makeBuffer([{f:350,d:25,v:0.03,o:0},{f:500,d:35,v:0.04,o:30}]);
+    soundBuffers.tap    = makeBuffer([{f:550,d:20,v:0.03,o:0}]);
+    soundBuffers.win    = makeBuffer([{f:660,d:60,v:0.08,o:0},{f:880,d:60,v:0.08,o:70},
+                                      {f:1320,d:120,v:0.10,o:140}]);
+
+    // Resume the context. resume() is async — we mark ready inside .then().
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().then(() => { audioReady = true; flushPendingSound(); });
+    } else {
+      audioReady = true;
+    }
+  }
+
+  function flushPendingSound() {
+    if (pendingFirstSound) {
+      const name = pendingFirstSound;
+      pendingFirstSound = null;
+      playNow(name);
+    }
+  }
+
+  function makeBuffer(notes) {
+    let totalMs = 30;
+    for (const note of notes) totalMs = Math.max(totalMs, note.o + note.d + 30);
+
+    const sampleRate = audioContext.sampleRate;
+    const sampleCount = Math.floor(sampleRate * totalMs / 1000);
+    const buffer = audioContext.createBuffer(1, sampleCount, sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (const note of notes) {
+      const startSample = Math.floor(note.o * sampleRate / 1000);
+      const endSample = startSample + Math.floor(note.d * sampleRate / 1000);
+      const period = sampleRate / note.f;
+
+      for (let i = startSample; i < endSample && i < sampleCount; i++) {
+        const t = (i - startSample) / (endSample - startSample);
+        let envelope = (t < 0.1) ? (t / 0.1) : (1 - (t - 0.1) / 0.9);
+        envelope *= envelope;
+        const phase = ((i - startSample) % period) / period;
+        const wave = Math.abs(phase * 4 - 2) - 1;
+        data[i] += note.v * envelope * wave;
+      }
+    }
+    return buffer;
+  }
+
+  // Actually play a sound on the running context. Caller must have ensured
+  // audioContext is in 'running' state.
+  function playNow(soundName) {
+    if (!audioContext || !soundBuffers[soundName]) return;
+    try {
+      const source = audioContext.createBufferSource();
+      source.buffer = soundBuffers[soundName];
+      source.connect(audioContext.destination);
+      source.start(0);
+    } catch (e) { /* ignore audio errors */ }
+  }
+
+  // Public play function. Debounces identical sounds within 50ms.
+  // If audio is not yet ready (first interaction is still resuming the
+  // context), queues this sound to play once it is ready.
+  function play(soundName) {
+    if (!audioContext || !soundBuffers[soundName]) return;
+    const now = performance.now();
+    if (lastPlayedAt[soundName] && now - lastPlayedAt[soundName] < 50) return;
+    lastPlayedAt[soundName] = now;
+
+    if (!audioReady) {
+      // Queue the first sound — it will play as soon as the context resumes.
+      // We only keep the latest one to avoid a burst when audio finally starts.
+      pendingFirstSound = soundName;
+      return;
+    }
+    if (audioContext.state === 'suspended') {
+      // Context got suspended again (e.g. backgrounded). Resume and queue.
+      audioReady = false;
+      pendingFirstSound = soundName;
+      audioContext.resume().then(() => { audioReady = true; flushPendingSound(); });
+      return;
+    }
+    playNow(soundName);
+  }
+
+
+  /* ── 4. VIBRATION ─────────────────────────────────────────── */
+  // Browsers block navigator.vibrate() unless it's called from a real user
+  // gesture. We call vibrateFromInput() inside touch/key handlers, and
+  // vibrate() from the game loop (only fires after haptics is unlocked).
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let hapticsUnlocked = false;
+
+  function vibrateFromInput(pattern) {
+    if (reducedMotion || !navigator.vibrate) return;
+    hapticsUnlocked = true;
+    try { navigator.vibrate(pattern); } catch (e) {}
+  }
+
+  function vibrate(pattern) {
+    if (!hapticsUnlocked || reducedMotion || !navigator.vibrate) return;
+    try { navigator.vibrate(pattern); } catch (e) {}
+  }
+
+
+  /* ── 5. LEADERBOARD ───────────────────────────────────────── */
+  // Talks to scores.php for the global leaderboard. Falls back to
+  // localStorage when the server isn't reachable.
+
+  let cachedServerScores = null;
+
+  function getLocalScores() {
+    try { return JSON.parse(localStorage.getItem('snake_scores') || '[]'); }
+    catch (e) { return []; }
+  }
+
+  function saveLocalScores(scores) {
+    try { localStorage.setItem('snake_scores', JSON.stringify(scores.slice(0, 5))); }
+    catch (e) {}
+  }
+
+  function getScores() {
+    return cachedServerScores || getLocalScores();
+  }
+
+  function fetchScores() {
+    fetch(API_URL + '?action=get')
+      .then(r => r.json())
+      .then(data => { if (data && data.scores) cachedServerScores = data.scores; })
+      .catch(() => { /* server offline — use local */ });
+  }
+
+  // Hash the score so the server can verify it came from a real game.
+  // Without this, anyone could submit fake scores by hitting the API.
+  async function makeScoreToken(score, moves, time) {
+    const message = `${score}|${moves}|${time}|${APP_SECRET}`;
+    const buffer = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(message)
+    );
+    return Array.from(new Uint8Array(buffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  async function submitScore(name, score) {
+    const time = Math.floor(performance.now() - gameStartedAt - totalPausedMs);
+    const token = await makeScoreToken(score, totalMoves, time);
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          name, score,
+          moves: totalMoves,
+          time, token
+        })
+      });
+      const data = await response.json();
+      if (data && data.scores) cachedServerScores = data.scores;
+    } catch (e) { /* server down — keep local copy */ }
+
+    if (!cachedServerScores) {
+      const scores = getLocalScores();
+      scores.push({ n: name, s: score });
+      scores.sort((a, b) => b.s - a.s);
+      saveLocalScores(scores);
+    }
+  }
+
+  function isHighScore(score) {
+    const scores = getScores();
+    return scores.length < 5 || score > scores[scores.length - 1].s;
+  }
+
+
+  /* ── 6. CANVAS ────────────────────────────────────────────── */
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+
+  const BACKGROUND = '#9aaa30';   // Nokia screen green
+  const FOREGROUND = '#1a1e00';   // dark pixel colour
+
+  // Play area dimensions in canvas (logical) pixels
+  const PLAY_WIDTH  = COLS * CELL_SIZE;
+  const PLAY_HEIGHT = ROWS * CELL_SIZE;
+
+  // Logical canvas size (play area + border + status bar + 1px shadow)
+  const LOGICAL_WIDTH  = PLAY_WIDTH  + BORDER * 2 + 2;
+  const LOGICAL_HEIGHT = PLAY_HEIGHT + BORDER * 2 + STATUS_HEIGHT + 2;
+
+  // Top-left of play area
+  const PLAY_X = BORDER + 1;
+  const PLAY_Y = STATUS_HEIGHT + BORDER + 1;
+
+  const CENTRE_X = PLAY_X + (PLAY_WIDTH  / 2) | 0;
+  const CENTRE_Y = PLAY_Y + (PLAY_HEIGHT / 2) | 0;
+
+  // Resize the canvas. The internal buffer is sized to physical pixels for
+  // sharpness on high-DPI screens (Retina, modern phones).
+  function resizeCanvas() {
+    const isDesktop   = window.matchMedia('(pointer: fine)').matches;
+    const isLandscape = window.innerWidth > window.innerHeight;
+    const isMobile    = !isDesktop;
+
+    const availableWidth = window.innerWidth -
+      (isDesktop ? 60 : (isLandscape && isMobile ? 230 : 20));
+    const availableHeight = window.innerHeight -
+      (isDesktop ? 60 : (isLandscape ? 20 : 230));
+
+    // Prefer integer scale for crisp pixel art; fall back to fractional if needed
+    let cssScale = Math.max(1, Math.floor(Math.min(
+      availableWidth  / LOGICAL_WIDTH,
+      availableHeight / LOGICAL_HEIGHT
+    )));
+    if (cssScale * LOGICAL_WIDTH  > availableWidth ||
+        cssScale * LOGICAL_HEIGHT > availableHeight) {
+      cssScale = Math.max(1, Math.min(
+        availableWidth  / LOGICAL_WIDTH,
+        availableHeight / LOGICAL_HEIGHT
+      ));
+    }
+
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const displayWidth  = Math.floor(LOGICAL_WIDTH  * cssScale);
+    const displayHeight = Math.floor(LOGICAL_HEIGHT * cssScale);
+
+    // Internal buffer at physical resolution
+    canvas.width  = Math.floor(displayWidth  * dpr);
+    canvas.height = Math.floor(displayHeight * dpr);
+    canvas.style.width  = displayWidth  + 'px';
+    canvas.style.height = displayHeight + 'px';
+
+    // Scale drawing context so we can draw in logical coordinates
+    ctx.setTransform(cssScale * dpr, 0, 0, cssScale * dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  // Pixel font: 3x5 characters drawn at FONT_SCALE.
+  const FONT = {
+    A:[7,5,7,5,5], B:[6,5,6,5,6], C:[7,4,4,4,7], D:[6,5,5,5,6], E:[7,4,7,4,7],
+    F:[7,4,6,4,4], G:[7,4,5,5,7], H:[5,5,7,5,5], I:[7,2,2,2,7], J:[7,1,1,5,7],
+    K:[5,5,6,5,5], L:[4,4,4,4,7], M:[5,7,5,5,5], N:[5,7,7,5,5], O:[7,5,5,5,7],
+    P:[7,5,7,4,4], Q:[7,5,5,7,1], R:[7,5,7,6,5], S:[7,4,7,1,7], T:[7,2,2,2,2],
+    U:[5,5,5,5,7], V:[5,5,5,5,2], W:[5,5,5,7,5], X:[5,5,2,5,5], Y:[5,5,2,2,2],
+    Z:[7,1,2,4,7],
+    '0':[7,5,5,5,7], '1':[2,6,2,2,7], '2':[7,1,7,4,7], '3':[7,1,7,1,7],
+    '4':[5,5,7,1,1], '5':[7,4,7,1,7], '6':[7,4,7,5,7], '7':[7,1,1,1,1],
+    '8':[7,5,7,5,7], '9':[7,5,7,1,7],
+    ' ':[0,0,0,0,0], '.':[0,0,0,0,2], '!':[2,2,2,0,2], '-':[0,0,7,0,0],
+    '>':[4,2,1,2,4]
+  };
+
+  function textWidth(text) {
+    return text.length * 4 * FONT_SCALE - FONT_SCALE;
+  }
+
+  function drawText(text, x, y, color) {
+    ctx.fillStyle = color || FOREGROUND;
+    text = String(text).toUpperCase();
+    const S = FONT_SCALE;
+    for (let i = 0; i < text.length; i++) {
+      const glyph = FONT[text[i]] || FONT[' '];
+      for (let row = 0; row < 5; row++) {
+        const bits = glyph[row];
+        if (bits & 4) ctx.fillRect(x + i*4*S,        y + row*S, S, S);
+        if (bits & 2) ctx.fillRect(x + i*4*S + S,    y + row*S, S, S);
+        if (bits & 1) ctx.fillRect(x + i*4*S + S*2,  y + row*S, S, S);
+      }
+    }
+  }
+
+  function drawTextCentered(text, centreX, y, color) {
+    drawText(text, Math.round(centreX - textWidth(text) / 2), y, color);
+  }
+
+  function drawTextRight(text, rightX, y, color) {
+    drawText(text, rightX - textWidth(text), y, color);
+  }
+
+
+  /* ── 7. GAME STATE ────────────────────────────────────────── */
+
+  const STATE_TITLE   = 0;
+  const STATE_PLAYING = 1;
+  const STATE_DEAD    = 2;
+  const STATE_PAUSED  = 3;
+  const STATE_WIN     = 4;
+
+  let state = STATE_TITLE;
+
+  // Direction encoding: 0=up, 1=left, 2=right, 3=down
+  const DIRECTION_DELTAS = [[0,-1],[-1,0],[1,0],[0,1]];
+  const OPPOSITE_DIRECTION = [3, 2, 1, 0];
+
+  // Snake: array of [x, y] cells. Head is index 0.
+  let snake = [];
+  let snakePrev = [];   // positions before this tick — for smooth interpolation
+
+  let direction = 2;
+  let inputQueue = [];
+
+  let food = null;
+  let foodIndex = 0;
+  let score = 0;
+  let speed = STARTING_SPEED;
+
+  let gameStartedAt = 0;
+  let totalMoves = 0;
+  let totalPausedMs = 0;
+  let pausedAt = 0;
+  let diedAt = 0;
+  let lastTickAt = 0;
+
+  let boostHoldDirection = -1;
+  let boostHeldSince = 0;
+  let isBoosting = false;
+
+  let nameDialogOpen = false;
+
+  // Title-screen demo snake (slithers across the bottom).
+  // Keeping it as a pair of arrays so we can interpolate smoothly.
+  const demoSnake = [];
+  const demoSnakePrev = [];
+  let demoLastTickAt = 0;
+  const DEMO_TICK_INTERVAL = 200;
+
+  function initDemoSnake() {
+    demoSnake.length = 0;
+    demoSnakePrev.length = 0;
+    for (let i = 0; i < 5; i++) {
+      demoSnake.push([2 + i, ROWS - 2]);
+      demoSnakePrev.push([2 + i, ROWS - 2]);
+    }
+    demoLastTickAt = performance.now();
+  }
+
+
+  /* ── 8. EFFECTS (juice) ───────────────────────────────────── */
+
+  // Screen shake — applied to the canvas transform during render
+  let shakeStartedAt = 0;
+  let shakeDuration  = 0;
+  let shakeMagnitude = 0;
+
+  function startShake(durationMs, magnitude) {
+    if (reducedMotion) return;
+    shakeStartedAt = performance.now();
+    shakeDuration  = durationMs;
+    shakeMagnitude = magnitude;
+  }
+
+  function getShakeOffset() {
+    const elapsed = performance.now() - shakeStartedAt;
+    if (elapsed >= shakeDuration) return [0, 0];
+    const t = 1 - elapsed / shakeDuration;
+    const decay = t * t;
+    const amount = shakeMagnitude * decay;
+    return [
+      (Math.random() * 2 - 1) * amount,
+      (Math.random() * 2 - 1) * amount
+    ];
+  }
+
+  // Particles — eaten food bursts outward
+  const particles = [];
+
+  function spawnEatParticles(cellX, cellY) {
+    if (reducedMotion) return;
+    const cx = PLAY_X + cellX * CELL_SIZE + CELL_SIZE / 2;
+    const cy = PLAY_Y + cellY * CELL_SIZE + CELL_SIZE / 2;
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 * i) / 8 + Math.random() * 0.4;
+      const speed = 0.5 + Math.random() * 0.8;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 350 + Math.random() * 150
+      });
+    }
+  }
+
+  function updateParticles(dtMs) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dtMs * 0.06;
+      p.y += p.vy * dtMs * 0.06;
+      const drag = Math.pow(0.96, dtMs / 16);
+      p.vx *= drag;
+      p.vy *= drag;
+      p.life -= dtMs;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function drawParticles() {
+    ctx.fillStyle = FOREGROUND;
+    for (const p of particles) {
+      // Solid for first 200ms, then flicker as it fades
+      if (p.life > 200 || Math.floor(p.life / 60) % 2 === 0) {
+        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), 1, 1);
+      }
+    }
+  }
+
+  // Score pop — score number bounces up briefly when you eat
+  let scorePopUntil = 0;
+
+
+  /* ── 9. GAME LOGIC ────────────────────────────────────────── */
+
+  function speedForScore(currentScore) {
+    // Smooth curve: fast drop early, gentle approach to fastest speed
+    return Math.max(
+      FASTEST_SPEED,
+      STARTING_SPEED - Math.pow(currentScore, 0.85) * 4
+    );
+  }
+
+  function findFoodSpot() {
+    const occupied = {};
+    for (const segment of snake) {
+      occupied[segment[0] + ',' + segment[1]] = true;
+    }
+    // Avoid spawning food directly in front of the snake's head
+    const head = snake[0];
+    const dx = DIRECTION_DELTAS[direction][0];
+    const dy = DIRECTION_DELTAS[direction][1];
+    for (let k = 1; k <= SAFE_FOOD_DISTANCE; k++) {
+      const fx = head[0] + dx * k;
+      const fy = head[1] + dy * k;
+      if (fx >= 0 && fx < COLS && fy >= 0 && fy < ROWS) {
+        occupied[fx + ',' + fy] = true;
+      }
+    }
+    const free = [];
+    for (let x = 0; x < COLS; x++) {
+      for (let y = 0; y < ROWS; y++) {
+        if (!occupied[x + ',' + y]) free.push([x, y]);
+      }
+    }
+    if (free.length === 0) return null; // board full = win
+    return free[Math.floor(Math.random() * free.length)];
+  }
+
+  function snapshotSnakePositions() {
+    snakePrev = snake.map(s => [s[0], s[1]]);
+  }
+
+  function startNewGame() {
+    const startX = Math.floor(COLS / 2);
+    const startY = Math.floor(ROWS / 2);
+    snake = [
+      [startX, startY],
+      [startX - 1, startY],
+      [startX - 2, startY],
+      [startX - 3, startY]
+    ];
+    snapshotSnakePositions();
+
+    direction = 2;
+    inputQueue = [];
+    score = 0;
+    speed = STARTING_SPEED;
+    foodIndex = Math.floor(Math.random() * FOODS.length);
+    food = findFoodSpot();
+
+    gameStartedAt = performance.now();
+    lastTickAt = gameStartedAt;
+    totalMoves = 0;
+    totalPausedMs = 0;
+
+    boostHoldDirection = -1;
+    isBoosting = false;
+
+    particles.length = 0;
+    shakeDuration = 0;
+    scorePopUntil = 0;
+
+    state = STATE_PLAYING;
+    play('start');
+    hideToast();
+  }
+
+  function die() {
+    state = STATE_DEAD;
+    diedAt = performance.now();
+    play('die');
+    vibrate([50, 30, 50, 30, 50]);
+    startShake(280, 4);
+    hideToast();
+    setTimeout(() => {
+      if (score > 0 && isHighScore(score)) showHighScoreDialog();
+    }, 900);
+  }
+
+  function win() {
+    state = STATE_WIN;
+    diedAt = performance.now();
+    play('win');
+    vibrate([40, 60, 40, 60, 120]);
+    setTimeout(() => {
+      if (score > 0 && isHighScore(score)) showHighScoreDialog();
+    }, 900);
+  }
+
+  function returnToTitle() {
+    if (nameDialogOpen) hideHighScoreDialog();
+    state = STATE_TITLE;
+    initDemoSnake();
+    fetchScores();
+  }
+
+  function pauseGame() {
+    if (state !== STATE_PLAYING) return;
+    state = STATE_PAUSED;
+    pausedAt = performance.now();
+    play('pause');
+  }
+
+  function resumeGame() {
+    if (state !== STATE_PAUSED) return;
+    const pauseDuration = performance.now() - pausedAt;
+    totalPausedMs += pauseDuration;
+    lastTickAt += pauseDuration;
+    state = STATE_PLAYING;
+    play('resume');
+  }
+
+  // Consume the next valid queued direction. If the head would move into
+  // a wall or into the snake's own body, peek ahead in the queue: maybe
+  // the player queued a corner turn (right→up at the bottom-right). Honour
+  // the second queued turn so corners feel forgiving.
+  function consumeInputQueue() {
+    while (inputQueue.length > 0) {
+      const nextDir = inputQueue[0];
+      // Skip useless entries (same direction or 180° reversal)
+      if (nextDir === direction || nextDir === OPPOSITE_DIRECTION[direction]) {
+        inputQueue.shift();
+        continue;
+      }
+      // Would this move crash into a wall or our own body?
+      const dx = DIRECTION_DELTAS[nextDir][0];
+      const dy = DIRECTION_DELTAS[nextDir][1];
+      const hx = snake[0][0] + dx;
+      const hy = snake[0][1] + dy;
+      let wouldCrash = (hx < 0 || hx >= COLS || hy < 0 || hy >= ROWS);
+      if (!wouldCrash) {
+        for (const segment of snake) {
+          if (segment[0] === hx && segment[1] === hy) { wouldCrash = true; break; }
+        }
+      }
+      if (wouldCrash && inputQueue.length >= 2) {
+        // The first queued turn would crash. Try the next one instead —
+        // the player probably meant a corner turn.
+        inputQueue.shift();
+        continue;
+      }
+      // Apply this direction
+      direction = nextDir;
+      inputQueue.shift();
+      play('turn');
+      return;
+    }
+  }
+
+  function tick(now) {
+    snapshotSnakePositions();
+    consumeInputQueue();
+
+    totalMoves++;
+
+    const dx = DIRECTION_DELTAS[direction][0];
+    const dy = DIRECTION_DELTAS[direction][1];
+    const newHeadX = snake[0][0] + dx;
+    const newHeadY = snake[0][1] + dy;
+
+    const inGracePeriod = (now - gameStartedAt) < STARTING_GRACE_MS;
+
+    // Wall collision
+    if (newHeadX < 0 || newHeadX >= COLS ||
+        newHeadY < 0 || newHeadY >= ROWS) {
+      if (inGracePeriod) return;
+      die();
+      return;
+    }
+
+    // Self collision
+    for (const segment of snake) {
+      if (segment[0] === newHeadX && segment[1] === newHeadY) {
+        if (inGracePeriod) return;
+        die();
+        return;
+      }
+    }
+
+    snake.unshift([newHeadX, newHeadY]);
+
+    if (food && newHeadX === food[0] && newHeadY === food[1]) {
+      score++;
+      play('eat');
+      vibrate(35);
+      spawnEatParticles(food[0], food[1]);
+      startShake(80, 1.5);
+      scorePopUntil = now + 200;
+      showToast(FOODS[foodIndex].name + '!');
+      speed = speedForScore(score);
+      foodIndex = Math.floor(Math.random() * FOODS.length);
+      food = findFoodSpot();
+      if (!food) { win(); return; }
+    } else {
+      snake.pop();
+    }
+  }
+
+  function tickDemoSnake() {
+    // Snake wraps around continuously. Each segment takes the position of
+    // the one in front of it; the head advances by 1 cell, wrapping at the
+    // right edge. The interpolation code knows how to handle wrap-around
+    // (it skips interpolation for one frame on the wrap).
+    for (let i = 0; i < demoSnake.length; i++) {
+      demoSnakePrev[i][0] = demoSnake[i][0];
+      demoSnakePrev[i][1] = demoSnake[i][1];
+    }
+    for (let i = demoSnake.length - 1; i > 0; i--) {
+      demoSnake[i][0] = demoSnake[i - 1][0];
+      demoSnake[i][1] = demoSnake[i - 1][1];
+    }
+    demoSnake[0][0] = (demoSnake[0][0] + 1) % COLS;
+  }
+
+
+  /* ── 10. RENDER ───────────────────────────────────────────── */
+
+  function drawSnakeSegment(cellX, cellY, isHead, dir) {
+    const x = Math.round(PLAY_X + cellX * CELL_SIZE + 1);
+    const y = Math.round(PLAY_Y + cellY * CELL_SIZE + 1);
+    ctx.fillStyle = FOREGROUND;
+    ctx.fillRect(x, y, 10, 10);
+    ctx.fillStyle = BACKGROUND;
+    if (isHead) {
+      // Eyes face the direction of travel
+      if (dir === 0)        { ctx.fillRect(x+2, y+2, 2, 2); ctx.fillRect(x+6, y+2, 2, 2); }
+      else if (dir === 3)   { ctx.fillRect(x+2, y+6, 2, 2); ctx.fillRect(x+6, y+6, 2, 2); }
+      else if (dir === 1)   { ctx.fillRect(x+2, y+2, 2, 2); ctx.fillRect(x+2, y+6, 2, 2); }
+      else                  { ctx.fillRect(x+6, y+2, 2, 2); ctx.fillRect(x+6, y+6, 2, 2); }
+    } else {
+      // Body has an inner cutout pattern
+      ctx.fillRect(x+3, y+3, 4, 4);
+      ctx.fillStyle = FOREGROUND;
+      ctx.fillRect(x+4, y+4, 2, 2);
+    }
+  }
+
+  // Draws snake at given interpolation alpha (0 = previous tick, 1 = current).
+  // When `wrapX` is true (demo snake), segments crossing the right edge are
+  // rendered as continuous motion: the segment slides off the right side
+  // and another phantom of the same segment slides in from the left.
+  function drawSnakeInterpolated(segments, prevSegments, alpha, dir, wrapX) {
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const cur = segments[i];
+      const prev = prevSegments[i];
+      if (!prev) { drawSnakeSegment(cur[0], cur[1], i === 0, dir); continue; }
+
+      const dx = cur[0] - prev[0];
+      const dy = cur[1] - prev[1];
+
+      if (wrapX && dx < -1) {
+        // Wrap: this segment crossed from right edge to left edge.
+        // Pretend it kept going past COLS, then render at both
+        // (off-screen-right) and (its actual position on the left).
+        const x1 = prev[0] + (cur[0] + COLS - prev[0]) * alpha; // past right edge
+        const x2 = x1 - COLS;                                   // visible from left
+        const y  = prev[1] + dy * alpha;
+        drawSnakeSegment(x1, y, i === 0, dir);
+        drawSnakeSegment(x2, y, i === 0, dir);
+        continue;
+      }
+
+      // Normal case (also handles fresh-growth teleport: skip interpolation)
+      let x, y;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        x = cur[0]; y = cur[1];
+      } else {
+        x = prev[0] + dx * alpha;
+        y = prev[1] + dy * alpha;
+      }
+      drawSnakeSegment(x, y, i === 0, dir);
+    }
+  }
+
+  function drawFood(now) {
+    if (!food) return;
+    const sprite = FOODS[foodIndex].sprite;
+    const x = PLAY_X + food[0] * CELL_SIZE + 1;
+    const y = PLAY_Y + food[1] * CELL_SIZE + 1;
+    ctx.fillStyle = FOREGROUND;
+    for (let row = 0; row < 5; row++) {
+      const bits = sprite[row];
+      for (let col = 0; col < 5; col++) {
+        if (bits & (0x10 >> col)) {
+          ctx.fillRect(x + col*2, y + row*2, 2, 2);
+        }
+      }
+    }
+    // Subtle pulsing ring around the food
+    if (!reducedMotion) {
+      const pulse = (Math.sin(now * 0.005) + 1) / 2 * 0.3;
+      if (pulse > 0.05) {
+        ctx.fillStyle = `rgba(26, 30, 0, ${(pulse * 0.35).toFixed(3)})`;
+        ctx.fillRect(x - 1, y - 1, 12, 1);
+        ctx.fillRect(x - 1, y + 10, 12, 1);
+        ctx.fillRect(x - 1, y, 1, 10);
+        ctx.fillRect(x + 10, y, 1, 10);
+      }
+    }
+  }
+
+  function drawBorder() {
+    ctx.fillStyle = FOREGROUND;
+    const x = PLAY_X - BORDER, y = PLAY_Y - BORDER;
+    const w = PLAY_WIDTH + BORDER*2, h = PLAY_HEIGHT + BORDER*2;
+    ctx.fillRect(x, y, w, BORDER);
+    ctx.fillRect(x, y + h - BORDER, w, BORDER);
+    ctx.fillRect(x, y, BORDER, h);
+    ctx.fillRect(x + w - BORDER, y, BORDER, h);
+  }
+
+  function drawGrid() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+    for (let i = 1; i < COLS; i++) ctx.fillRect(PLAY_X + i*CELL_SIZE, PLAY_Y, 1, PLAY_HEIGHT);
+    for (let j = 1; j < ROWS; j++) ctx.fillRect(PLAY_X, PLAY_Y + j*CELL_SIZE, PLAY_WIDTH, 1);
+  }
+
+  function drawStatusBar() {
+    const scores = getScores();
+    const best = scores.length ? scores[0].s : 0;
+    // Score number bounces up briefly when you eat
+    const popT = Math.max(0, scorePopUntil - performance.now()) / 200;
+    const yOffset = (popT > 0 && !reducedMotion) ? -Math.round(popT * 2) : 0;
+    drawText(('0000' + score).slice(-4), PLAY_X, 2 + yOffset);
+    drawTextRight('HI' + ('0000' + best).slice(-4), PLAY_X + PLAY_WIDTH, 2);
+    if (isBoosting && state === STATE_PLAYING) {
+      drawTextCentered('>>', CENTRE_X, 2);
+    }
+  }
+
+  function drawScoreboard(yOffset) {
+    const scores = getScores();
+    if (!scores.length) {
+      drawTextCentered('NO SCORES YET', CENTRE_X, yOffset + 14);
+      return;
+    }
+    drawTextCentered('TOP SCORES', CENTRE_X, yOffset);
+    for (let i = 0; i < Math.min(scores.length, 5); i++) {
+      const entry = scores[i];
+      drawText((i + 1) + '.' + entry.n.toUpperCase().slice(0, 8),
+               PLAY_X + 6, yOffset + 14 + i * 12);
+      drawTextRight(('0000' + entry.s).slice(-4),
+                    PLAY_X + PLAY_WIDTH - 6, yOffset + 14 + i * 12);
+    }
+  }
+
+  function render(now) {
+    // Apply screen shake
+    const shake = getShakeOffset();
+    const isShaking = shake[0] !== 0 || shake[1] !== 0;
+    if (isShaking) {
+      ctx.save();
+      ctx.translate(shake[0], shake[1]);
+    }
+
+    // Background
+    ctx.fillStyle = BACKGROUND;
+    ctx.fillRect(-20, -20, LOGICAL_WIDTH + 40, LOGICAL_HEIGHT + 40);
+
+    if (state === STATE_TITLE) {
+      drawTextCentered('SNAKE  II',   CENTRE_X, CENTRE_Y - 52);
+      drawTextCentered('PRESS START', CENTRE_X, CENTRE_Y - 34);
+      drawScoreboard(CENTRE_Y - 16);
+      // Demo snake at the bottom of the screen
+      const demoAlpha = Math.min(1, (now - demoLastTickAt) / DEMO_TICK_INTERVAL);
+      drawSnakeInterpolated(demoSnake, demoSnakePrev, demoAlpha, 2, true);
+      if (isShaking) ctx.restore();
+      return;
+    }
+
+    drawStatusBar();
+    drawBorder();
+    drawGrid();
+
+    if (state === STATE_PAUSED) {
+      drawSnakeInterpolated(snake, snakePrev, 0, direction);
+      drawFood(now);
+      ctx.fillStyle = 'rgba(154, 170, 48, 0.85)';
+      ctx.fillRect(PLAY_X, PLAY_Y, PLAY_WIDTH, PLAY_HEIGHT);
+      drawTextCentered('PAUSED',        CENTRE_X, CENTRE_Y - 10);
+      drawTextCentered('ESC TO RESUME', CENTRE_X, CENTRE_Y + 6);
+      if (isShaking) ctx.restore();
+      return;
+    }
+
+    if (state === STATE_WIN) {
+      drawSnakeInterpolated(snake, snakePrev, 0, direction);
+      ctx.fillStyle = 'rgba(154, 170, 48, 0.88)';
+      ctx.fillRect(PLAY_X, PLAY_Y, PLAY_WIDTH, PLAY_HEIGHT);
+      drawTextCentered('PERFECT!',                            CENTRE_X, CENTRE_Y - 16);
+      drawTextCentered('SCORE ' + ('0000' + score).slice(-4), CENTRE_X, CENTRE_Y);
+      drawTextCentered('ENTER - RETRY',                       CENTRE_X, CENTRE_Y + 16);
+      if (isShaking) ctx.restore();
+      return;
+    }
+
+    if (state === STATE_DEAD) {
+      drawSnakeInterpolated(snake, snakePrev, 0, direction);
+      drawFood(now);
+      drawParticles();
+      // Smooth fade-in overlay (no jarring blink)
+      const elapsed = now - diedAt;
+      const overlayAlpha = Math.min(0.88, elapsed / 400 * 0.88);
+      ctx.fillStyle = `rgba(154, 170, 48, ${overlayAlpha.toFixed(3)})`;
+      ctx.fillRect(PLAY_X, PLAY_Y, PLAY_WIDTH, PLAY_HEIGHT);
+      if (elapsed > 250) {
+        drawTextCentered('GAME OVER',                            CENTRE_X, CENTRE_Y - 16);
+        drawTextCentered('SCORE ' + ('0000' + score).slice(-4),  CENTRE_X, CENTRE_Y);
+        drawTextCentered('ESC-MENU  ENTER-RETRY',                CENTRE_X, CENTRE_Y + 16);
+      }
+      if (isShaking) ctx.restore();
+      return;
+    }
+
+    // STATE_PLAYING
+    const tickInterval = isBoosting ? speed / BOOST_MULTIPLIER : speed;
+    const alpha = Math.min(1, (now - lastTickAt) / tickInterval);
+    drawFood(now);
+    drawSnakeInterpolated(snake, snakePrev, alpha, direction);
+    drawParticles();
+
+    if (isShaking) ctx.restore();
+  }
+
+
+  /* ── 11. MAIN LOOP ────────────────────────────────────────── */
+
+  let lastFrameTime = 0;
+
+  function loop(now) {
+    const dt = lastFrameTime ? Math.min(now - lastFrameTime, 100) : 16;
+    lastFrameTime = now;
+
+    if (particles.length > 0) updateParticles(dt);
+
+    if (state === STATE_PLAYING) {
+      const wasBoosting = isBoosting;
+      isBoosting = boostHoldDirection === direction &&
+                   (now - boostHeldSince > BOOST_HOLD_DELAY);
+      if (isBoosting && !wasBoosting) play('boost');
+
+      const tickInterval = isBoosting ? speed / BOOST_MULTIPLIER : speed;
+      // Run ticks if enough time has passed (cap 4 to avoid death-spiral)
+      let ticksRun = 0;
+      while (now - lastTickAt >= tickInterval && ticksRun < 4 &&
+             state === STATE_PLAYING) {
+        lastTickAt += tickInterval;
+        tick(lastTickAt);
+        ticksRun++;
+      }
+    } else if (state === STATE_TITLE) {
+      if (now - demoLastTickAt >= DEMO_TICK_INTERVAL) {
+        tickDemoSnake();
+        demoLastTickAt = now;
+      }
+    }
+
+    render(now);
+    requestAnimationFrame(loop);
+  }
+
+
+  /* ── 12. INPUT ────────────────────────────────────────────── */
+
+  // If a turn is queued and we're still early in the tick, apply the
+  // direction change immediately so the next tick moves us in the new
+  // direction. This makes turning feel responsive — without it, you can
+  // hit a wall before the tick fires.
+  function tryEarlyTurn() {
+    if (state !== STATE_PLAYING || inputQueue.length === 0) return;
+    const tickInterval = isBoosting ? speed / BOOST_MULTIPLIER : speed;
+    const tickProgress = (performance.now() - lastTickAt) / tickInterval;
+    if (tickProgress > EARLY_TURN_WINDOW) return;
+
+    const nextDir = inputQueue[0];
+    if (nextDir === OPPOSITE_DIRECTION[direction] || nextDir === direction) return;
+
+    direction = nextDir;
+    inputQueue.shift();
+    play('turn');
+    // Pull the next tick forward — without this you'd have to wait the
+    // remainder of the current tick before the snake actually moves.
+    // Scheduling the tick 1 frame from now (~16ms) keeps the visual
+    // smooth without making it feel jumpy.
+    const now = performance.now();
+    const nextTickIn = Math.min(tickInterval - (now - lastTickAt), 32);
+    lastTickAt = now - (tickInterval - nextTickIn);
+  }
+
+  function pressDirection(newDirection) {
+    if (state !== STATE_PLAYING) return;
+    if (newDirection === OPPOSITE_DIRECTION[direction]) return;
+    // Same direction: start (or continue) boost timer
+    if (newDirection === direction) {
+      if (boostHoldDirection !== newDirection) {
+        boostHoldDirection = newDirection;
+        boostHeldSince = performance.now();
+      }
+      return;
+    }
+    // New direction: queue it (and break boost)
+    boostHoldDirection = -1;
+    if (inputQueue.length < INPUT_QUEUE_MAX) {
+      const lastInQueue = inputQueue.length
+        ? inputQueue[inputQueue.length - 1]
+        : direction;
+      if (newDirection !== OPPOSITE_DIRECTION[lastInQueue] &&
+          newDirection !== lastInQueue) {
+        inputQueue.push(newDirection);
+      }
+    }
+    tryEarlyTurn();
+  }
+
+  function releaseDirection(releasedDirection) {
+    if (boostHoldDirection === releasedDirection) {
+      boostHoldDirection = -1;
+      isBoosting = false;
+    }
+  }
+
+  // Keyboard mapping. Use e.code (physical key) so Shift+Arrow works.
+  const KEYCODE_MAP = {
+    ArrowUp: 0, ArrowDown: 3, ArrowLeft: 1, ArrowRight: 2,
+    KeyW: 0, KeyS: 3, KeyA: 1, KeyD: 2
+  };
+  const KEY_MAP = {
+    ArrowUp: 0, ArrowDown: 3, ArrowLeft: 1, ArrowRight: 2,
+    w: 0, s: 3, a: 1, d: 2, W: 0, S: 3, A: 1, D: 2
+  };
+  const heldKeys = {};
+
+  function getDirectionFromEvent(event) {
+    if (event.code && KEYCODE_MAP[event.code] !== undefined) {
+      return KEYCODE_MAP[event.code];
+    }
+    return KEY_MAP[event.key];
+  }
+
+  // Returns true if the game should accept a "start a new game" input.
+  // After dying, we lock out input briefly so the player has time to
+  // see what happened instead of accidentally restarting.
+  function canStartNewGame() {
+    if (state === STATE_TITLE) return true;
+    if (state === STATE_DEAD || state === STATE_WIN) {
+      return performance.now() - diedAt > DEATH_INPUT_LOCKOUT_MS;
+    }
+    return false;
+  }
+
+  document.addEventListener('keydown', function(event) {
+    if (nameDialogOpen) {
+      if (event.key === 'Enter')       { event.preventDefault(); submitName(); }
+      else if (event.key === 'Escape') { event.preventDefault(); hideHighScoreDialog(); returnToTitle(); }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (state === STATE_PLAYING)     pauseGame();
+      else if (state === STATE_PAUSED) resumeGame();
+      else if (state === STATE_DEAD || state === STATE_WIN) returnToTitle();
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setupAudio();
+      if (canStartNewGame())           { play('tap'); startNewGame(); }
+      else if (state === STATE_PAUSED) resumeGame();
+      return;
+    }
+
+    if (event.key === 'p' || event.key === 'P') {
+      if (state === STATE_PLAYING)     pauseGame();
+      else if (state === STATE_PAUSED) resumeGame();
+      return;
+    }
+
+    const dir = getDirectionFromEvent(event);
+    if (dir !== undefined) {
+      event.preventDefault();
+      setupAudio();
+      if (state === STATE_PAUSED) { resumeGame(); return; }
+
+      const keyId = event.code || event.key;
+      if (!heldKeys[keyId]) {
+        heldKeys[keyId] = true;
+        pressDirection(dir);
+        if (state === STATE_PLAYING) vibrateFromInput(15);
+      }
+      if (canStartNewGame()) { play('tap'); startNewGame(); }
+    }
+  });
+
+  document.addEventListener('keyup', function(event) {
+    const dir = getDirectionFromEvent(event);
+    if (dir !== undefined) {
+      const keyId = event.code || event.key;
+      heldKeys[keyId] = false;
+      releaseDirection(dir);
+    }
+  });
+
+  // Touch d-pad
+  document.querySelectorAll('[data-direction]').forEach(function(button) {
+    const dir = parseInt(button.dataset.direction);
+
+    function onPress(event) {
+      if (event.type === 'touchstart') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (nameDialogOpen) return;
+      setupAudio();
+      if (state === STATE_PAUSED) { resumeGame(); return; }
+
+      pressDirection(dir);
+      if (state === STATE_PLAYING) vibrateFromInput(15);
+      if (canStartNewGame()) { vibrateFromInput(20); play('tap'); startNewGame(); }
+    }
+
+    function onRelease(event) {
+      if (event && event.type === 'touchend') event.preventDefault();
+      releaseDirection(dir);
+    }
+
+    button.addEventListener('touchstart',  onPress,   { passive: false });
+    button.addEventListener('touchend',    onRelease, { passive: false });
+    button.addEventListener('touchcancel', () => releaseDirection(dir));
+    button.addEventListener('mousedown',   onPress);
+    button.addEventListener('mouseup',     onRelease);
+    button.addEventListener('mouseleave',  () => releaseDirection(dir));
+  });
+
+  // Tap canvas to start
+  canvas.addEventListener('click', function() {
+    if (nameDialogOpen) return;
+    setupAudio();
+    if (canStartNewGame())           { vibrateFromInput(20); play('tap'); startNewGame(); }
+    else if (state === STATE_PAUSED) resumeGame();
+  });
+
+  // Swipe gestures on the console
+  const consoleEl = document.getElementById('console');
+  let swipeStartX = 0, swipeStartY = 0, isSwipping = false;
+
+  consoleEl.addEventListener('touchstart', function(event) {
+    if (nameDialogOpen) return;
+    swipeStartX = event.touches[0].clientX;
+    swipeStartY = event.touches[0].clientY;
+    isSwipping = true;
+  }, { passive: true });
+
+  consoleEl.addEventListener('touchend', function(event) {
+    if (!isSwipping || nameDialogOpen) return;
+    isSwipping = false;
+    const dx = event.changedTouches[0].clientX - swipeStartX;
+    const dy = event.changedTouches[0].clientY - swipeStartY;
+    setupAudio();
+    // Treat tiny movements as a tap, not a swipe
+    const deadzone = 25 * (window.devicePixelRatio || 1);
+    if (dx*dx + dy*dy < deadzone*deadzone) {
+      if (canStartNewGame()) { vibrateFromInput(20); play('tap'); startNewGame(); }
+      return;
+    }
+    const dir = Math.abs(dx) > Math.abs(dy)
+      ? (dx > 0 ? 2 : 1)
+      : (dy > 0 ? 3 : 0);
+    pressDirection(dir);
+    if (state === STATE_PLAYING) vibrateFromInput(15);
+    if (canStartNewGame()) { vibrateFromInput(20); play('tap'); startNewGame(); }
+  }, { passive: true });
+
+  // Auto-pause when tab loses focus
+  window.addEventListener('blur', () => { if (state === STATE_PLAYING) pauseGame(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === STATE_PLAYING) pauseGame();
+  });
+
+
+  /* ── HIGH-SCORE DIALOG ────────────────────────────────────── */
+
+  const highScoreDialog = document.getElementById('high-score-dialog');
+  const highScoreText   = document.getElementById('high-score-text');
+  const nameInput       = document.getElementById('name-input');
+  const saveButton      = document.getElementById('save-button');
+
+  function showHighScoreDialog() {
+    nameDialogOpen = true;
+    highScoreText.textContent = 'Score: ' + score;
+    nameInput.value = '';
+    highScoreDialog.style.display = 'flex';
+    setTimeout(() => nameInput.focus(), 100);
+  }
+
+  function hideHighScoreDialog() {
+    nameDialogOpen = false;
+    highScoreDialog.style.display = 'none';
+  }
+
+  async function submitName() {
+    if (saveButton.disabled) return;
+    saveButton.disabled = true;
+    const name = (nameInput.value.trim().toUpperCase() || 'PLAYER').slice(0, 10);
+    try { await submitScore(name, score); }
+    finally { saveButton.disabled = false; }
+    hideHighScoreDialog();
+    play('tap');
+    returnToTitle();
+  }
+
+  saveButton.onclick = submitName;
+  nameInput.onkeydown = function(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitName();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      hideHighScoreDialog();
+      returnToTitle();
+    }
+  };
+  highScoreDialog.addEventListener('touchstart',
+    e => e.stopPropagation(), { passive: false });
+
+
+  /* ── TOAST ────────────────────────────────────────────────── */
+
+  const toast = document.getElementById('toast');
+  let toastTimer;
+
+  function showToast(message) {
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.style.opacity = '0', 700);
+  }
+
+  function hideToast() {
+    toast.style.opacity = '0';
+    clearTimeout(toastTimer);
+  }
+
+
+  /* ── 13. INIT ─────────────────────────────────────────────── */
+
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
+
+  resizeCanvas();
+  initDemoSnake();
+  fetchScores();
+  requestAnimationFrame(loop);
+
+})();
+</script>
+
+</body>
+</html>
