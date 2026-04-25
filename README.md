@@ -168,6 +168,6 @@ Free to use, fork, modify, and ship. Attribution appreciated but not required.
 
 ## Credits
 
-Built by [Omar Alzand](https://github.com/OmarAlzand).
+Built by [Omar Alzand](https://github.com/OmarAlzand). Done by Code by Opus 4.7
 
 Inspired by **Snake II** (Nokia, 2000). The original is one of the most-played video games in history — over 350 million phones shipped with it. This is a love-letter, not a clone of the assets.
